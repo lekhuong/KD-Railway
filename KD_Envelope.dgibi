@@ -1,0 +1,404 @@
+************************************************************************
+***< Section: MODEL PROPERTIES >***
+************************************************************************
+OPTI DIME 2; OPTI ELEM SEG2;
+
+
+***Convert train
+DEBP TrainCV TRAINK*TABLE;
+    T_K1 = TABLE;
+    T_K1. X = TABL;
+    T_K1. F = TABL;
+    REPE BLOC1 (DIME (TRAINK . 'Location'));
+        i = &BLOC1;
+        T_K1. X . i = EXTR (TRAINK . 'Location') i;
+        T_K1. F . i = (EXTR (TRAINK . 'Load') i) * 1000.;    
+    FIN BLOC1;
+FINP T_K1;
+
+DEBP CALCULK TRAINK*TABLE VK1*FLOTTANT VK2*FLOTTANT DELTAV*FLOTTANT
+    DTEX*FLOTTANT PCALCULK*TABLE MODLTOT*MMODEL MATOT*MCHAML
+    RSCALE*FLOTTANT;
+    
+    
+*Nember of axe loads
+    NBAXEL = DIME (TRAINK . X);
+    
+***Bat dau tinh toan vong lap
+    NBV = ENTI ((VK2 - VK1) / DELTAV + 1);
+    
+*Resuv chuoi van toc; RDmax result of max displacement
+    RESUV = PROG;
+    RDMax = TABL;
+    RAMax = TABL;
+    RMMax = TABL;
+    
+*Tabl luu chuyen vi, gia toc theo thoi gian
+    RDTIME = TABL;
+    RATIME = TABL;
+    RMTIME = TABL;
+    
+    
+*    RQMax = TABL;
+    REPE MAI (DIME PCALCULK);
+        RDMax. &MAI = PROG;
+        RAMax. &MAI = PROG;
+        RMMax. &MAI = PROG;
+    FIN MAI;
+    
+    REPE KHUONG NBV;
+        VKK   = VK1 + ((&KHUONG - 1) * DELTAV);
+        RESUV = RESUV ET (PROG VKK);
+        VKK   = VKK / 3.6;
+        TENDK = ((TRAINK . X . NBAXEL) + L ) / VKK;
+        TENDK = (ENTI TENDK) + 1.;
+        
+        REPE DYNLOAD (NBE + 1);
+            i = &DYNLOAD;
+            TSTART = ESIZE * (i - 2) / VKK;
+            EVK = FTIME TRAINK TSTART ESIZE VKK TENDK;
+            CHAD = CHAR MECA (CHA1 .  i) EVK;
+            SI (EGA i 1);
+                CHADYN = CHAD;
+            SINON;
+                CHADYN = CHADYN ET CHAD;
+            FINSI;
+        FIN DYNLOAD;
+        
+        TCHAR = TABLE 'CHARGEMENT' ;    
+        TCHAR.'BASE_A' = pjba tbas1 CHADYN;
+        
+        TSORT = TABLE 'SORTIE'   ;                           
+        TSORV = TABLE 'VARIABLE' ;                           
+        TSORT.'VARIABLE' = TSORV ;                           
+        TSORV.'VITESSE'         = VRAI;                     
+        TSORV.'DEPLACEMENT' = VRAI ;                     
+        TSORV.'ACCELERATION'    = VRAI ;
+*
+        
+        NTT   = ENTIER (TENDK/DTEX);
+        TRESU = DYNE DE_VOGELAERE TBAS1 TAMOR TCHAR NTT DTEX TSORT;
+        
+        REPE PKCAL (DIME PCALCULK);
+            PCALCUL = PCALCULK. &PKCAL;
+***Displacement en mm
+            EDKK     = EVOL RECO TRESU tbas1 CHADYN 'DEPL' PCALCUL  UY;
+            KHU      = EXTR EDKK 'ORDO';
+            KHUAX    = EXTR EDKK 'ABSCISSE';
+            DMAX     = MAXI(ABS(KHU));
+            KHUKK    = ABS(KHU);
+            POSIMAX  = POSI DMAX 'DANS' KHUKK;
+            TIMEDMAX = EXTR KHUAX POSIMAX;
+ 
+            DMAX = DMAX * 1000. * RSCALE;
+            RDMax. &PKCAL = (RDMax. &PKCAL) ET (PROG DMAX);
+            
+***Acceleration en m/s2
+            EAKK = EVOL RECO TRESU tbas1 CHADYN 'ACCE' PCALCUL  UY;
+            KHA  = EXTR EAKK 'ORDO';
+            AMAX = MAXI(ABS(KHA));
+            AMAX = AMAX * RSCALE ;
+            RAMax. &PKCAL = (RAMax. &PKCAL) ET (PROG AMAX);
+            
+***Moment en KN.m
+            dep1    = RECO TRESU tbas1 TIMEDMAX 'DEPL';
+            SIGM1   = SIGMA MODLTOT MATOT dep1;
+            SIGM2   = CHAN NOEUD MODLTOT SIGM1;
+            SIGM3   = CHAN CHPO MODLTOT SIGM2;
+            MD1     = EXTR SIGM3 MOMZ PCALCUL;
+*            FZ1     = EXTR SIGM3 EFFY PCALCUL;
+            RMMax. &PKCAL = (RMMax. &PKCAL) ET 
+            (PROG (MD1/1000. * RSCALE));
+        FIN PKCAL;
+        
+    FIN KHUONG;
+    
+FINP RESUV RDMax RAMax RMMax;
+
+DEBP FTIME TRAIN*TABLE T1*FLOTTANT LENGTH*FLOTTANT 
+    VT*FLOTTANT TEND*FLOTTANT;
+    TPASS = LENGTH/VT;
+    LI1 = PROG -0.5; 
+    LI2 = PROG 0.;  
+    NBLOAD = DIME (TRAIN . X);
+    REPE KHUONG NBLOAD;
+        i = &KHUONG;
+        XLOAD = TRAIN . X . i;
+        FLOAD = TRAIN . F . i;
+        TK = XLOAD / VT + T1;
+        LI1 = LI1 ET (PROG TK (TK + TPASS) (TK + (2*TPASS))); 
+        LI2 = LI2 ET (PROG 0. FLOAD 0.);
+    FIN KHUONG;
+    LI1 = LI1 ET (PROG TEND);
+    LI2 = LI2 ET (PROG 0.);
+    EV = EVOL MANU LI1 LI2 ;
+FINP EV;
+
+DEBP DESSDMAX PCALCULK*TABLE NAMETRA*TABLE RESUDMax*TABLE RESUV*LISTREEL
+    LISTRAIN*LISTREEL VMIN*FLOTTANT VMAX*FLOTTANT TRACKH*MOT;
+    
+    TABLEGE = TABL;
+    TABLEGE. 'TITRE'     = TABL;
+    licoul = MOTS 'DEFAUT' 'BLEU' 'ROUGE' 'ROSE' 'JAUNE' 'VERT' 'TURQ'
+    'AZUR' 'ORANGE' 'VIOLET' 'OCEAN' 'CYAN' 'OLIVE' 'GRIS';
+    lilign = MOTS 'LIGN ' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '
+    'LIGN' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM ' 'LIGN ' 
+    'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '  ;
+    
+    REPE DESSPC (dime PCALCULK);
+        XXK = FLOT (COOR 1 (PCALCULK. &DESSPC));
+        REPE KHUONG (DIME LISTRAIN);
+            ik    = ENTI (EXTR LISTRAIN &KHUONG);
+            icoul = 'EXTR' licoul &KHUONG ;
+            ilign = 'EXTR' lilign &KHUONG ;
+            DDMAX = RESUDMax. ik;
+            TABKH = EVOL icoul 'MANU' RESUV (DDMAX . &DESSPC); 
+            SI (EGA &KHUONG 1);
+                KHEVOL = TABKH;
+            SINO;
+                KHEVOL = KHEVOL ET TABKH;
+            FINS;
+            TABLEGE. 'TITRE' . &KHUONG = NAMETRA. ik;
+            TABLEGE. &KHUONG = MOT ilign;
+        FIN KHUONG;
+        
+        namepic = CHAI 'Maxi displacement by train and velocity at position x= '
+        FORMAT '(F6.2)' XXK 'm';
+        
+        OPTI 'TRAC' TRACKH 'EPTR' 10;
+*OPTI 'POTR' 'HELVETICA_14'  ;
+        DESS KHEVOL 
+        'LEGE' TABLEGE 'XBOR' VMIN VMAX 'MIMA'
+*'XGRA' 20
+        'TITR' namepic
+        'TITX' 'v(km/h)'  'POSX' 'EXCE'
+        'TITY' 'Displacement (mm)' 'POSY' 'EXCE'
+        'GRIL' 'POIN' 'GRIS';
+        
+    FIN DESSPC;
+FINP;
+
+DEBP DESSAMAX PCALCULK*TABLE NAMETRA*TABLE RESUAMax*TABLE RESUV*LISTREEL
+    LISTRAIN*LISTREEL VMIN*FLOTTANT VMAX*FLOTTANT TRACKH*MOT;
+    
+    TABLEGE = TABL;
+    TABLEGE. 'TITRE'     = TABL;
+    licoul = MOTS 'DEFAUT' 'BLEU' 'ROUGE' 'ROSE' 'JAUNE' 'VERT' 'TURQ'
+    'AZUR' 'ORANGE' 'VIOLET' 'OCEAN' 'CYAN' 'OLIVE' 'GRIS';
+    lilign = MOTS 'LIGN ' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '
+    'LIGN' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM ' 'LIGN ' 
+    'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '  ;
+    
+    
+    REPE DESSPC (dime PCALCULK);
+        XXK = FLOT (COOR 1 (PCALCULK. &DESSPC));
+        REPE KHUONG (DIME LISTRAIN);
+            ik    = ENTI (EXTR LISTRAIN &KHUONG);
+            icoul = 'EXTR' licoul &KHUONG ;
+            ilign = 'EXTR' lilign &KHUONG ;
+            AAMAX = RESUAMax. ik;
+            TABKH = EVOL icoul 'MANU' RESUV (AAMAX . &DESSPC); 
+            SI (EGA &KHUONG 1);
+                KHEVOL = TABKH;
+            SINO;
+                KHEVOL = KHEVOL ET TABKH;
+            FINS;
+            TABLEGE. 'TITRE' . &KHUONG = NAMETRA. ik;
+            TABLEGE. &KHUONG = MOT ilign;
+        FIN KHUONG;
+        
+namepic = CHAI 'Maxi acceleration by train and velocity at position x= '
+        FORMAT '(F6.2)' XXK 'm';
+        
+        OPTI 'TRAC' TRACKH 'EPTR' 10;
+*OPTI 'POTR' 'HELVETICA_14'  ;
+        DESS KHEVOL 
+        'LEGE' TABLEGE 'XBOR' VMIN VMAX 'MIMA'
+*'XGRA' 20
+        'TITR' namepic
+        'TITX' 'v(km/h)'  'POSX' 'EXCE'
+        'TITY' 'Acceleration (m/s2)' 'POSY' 'EXCE'
+        'GRIL' 'POIN' 'GRIS';
+        
+    FIN DESSPC;
+FINP;
+
+DEBP DESSMMAX PCALCULK*TABLE NAMETRA*TABLE RESUMMax*TABLE RESUV*LISTREEL
+    LISTRAIN*LISTREEL VMIN*FLOTTANT VMAX*FLOTTANT TRACKH*MOT;
+    
+    TABLEGE = TABL;
+    TABLEGE. 'TITRE'     = TABL;
+    licoul = MOTS 'DEFAUT' 'BLEU' 'ROUGE' 'ROSE' 'JAUNE' 'VERT' 'TURQ'
+    'AZUR' 'ORANGE' 'VIOLET' 'OCEAN' 'CYAN' 'OLIVE' 'GRIS';
+    lilign = MOTS 'LIGN ' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '
+    'LIGN' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM ' 'LIGN ' 
+    'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '  ;
+    
+    REPE DESSPC (dime PCALCULK);
+        XXK = FLOT (COOR 1 (PCALCULK. &DESSPC));
+        REPE KHUONG (DIME LISTRAIN);
+            ik    = ENTI (EXTR LISTRAIN &KHUONG);
+            icoul = 'EXTR' licoul &KHUONG ;
+            ilign = 'EXTR' lilign &KHUONG ;
+            MMMAX = RESUMMax. ik;
+            TABKH = EVOL icoul 'MANU' RESUV (MMMAX . &DESSPC); 
+            SI (EGA &KHUONG 1);
+                KHEVOL = TABKH;
+            SINO;
+                KHEVOL = KHEVOL ET TABKH;
+            FINS;
+            TABLEGE. 'TITRE' . &KHUONG = NAMETRA. ik;
+            TABLEGE. &KHUONG = MOT ilign;
+        FIN KHUONG;
+        
+        namepic = CHAI 'Maxi moment by train and velocity at position x= '
+        FORMAT '(F6.2)' XXK 'm';
+        
+        OPTI 'TRAC' TRACKH 'EPTR' 10;
+*OPTI 'POTR' 'HELVETICA_14'  ;
+        DESS KHEVOL 
+        'LEGE' TABLEGE 'XBOR' VMIN VMAX 'MIMA'
+*'XGRA' 20
+        'TITR' namepic
+        'TITX' 'v(km/h)'  'POSX' 'EXCE'
+        'TITY' 'Bending moment(kN.m)' 'POSY' 'EXCE'
+        'GRIL' 'POIN' 'GRIS';
+        
+    FIN DESSPC;
+FINP;
+
+************************************************
+
+RHOK  = Mk/ASEC;
+ESIZE = L / Nbe;
+
+PA = 0. 0. ; 
+
+NBE = ENTI NBE;
+REPE LINE Nbe;
+    i=&LINE;
+    SI (EGA i 1);
+        L1 = PA DROI 1 (i*ESIZE 0.);
+    SINON;
+        L1 = L1 DROI 1 (i*ESIZE 0.);
+    FINS;
+FIN LINE;
+
+PB = POIN L1 'PROC' (L 0.);
+
+*+++++++++++++++++++++++++++++++++++*
+* MATRIX OF RIGIDITY *
+*+++++++++++++++++++++++++++++++++++*
+MODLTOT = MODE L1 MECANIQUE ELASTIQUE POUT;
+MATOT = MATE MODLTOT YOUN (EK * 1E6) NU 0.3 RHO RHOK 
+SECT ASEC INRZ IK; 
+RIGI1 = RIGI MODLTOT MATOT;
+MAS_S = MASS MODLTOT MATOT;
+*OPTI DONN 5;
+*+++++++++++++++++++++++++++++++++++*
+* BOUNDARY CONDITIONS *
+*+++++++++++++++++++++++++++++++++++*
+CLT = BLOQ UX UY UZ RX RY (PA ET PB); 
+RIGITOT = RIGI1 ET CLT;
+
+************************************************************************
+***< Section: Modal analysis >***
+************************************************************************
+
+MASIMP = MASS MATOT MODLTOT ;
+TB1    = VIBR 'INTERVAL' 0.1 FMAXK RIGITOT MASIMP 'MULT' TBAS ;
+vib1b  = TB1 . 'MODES';
+
+* Modal basis
+TBAS1 = TABLE 'BASE_MODALE' ;
+TBAS1.'MODES' = vib1b ;
+*
+NB_MODE = DIME TB1. 'MODES';
+
+SI (NB_MODE > 1); 
+***********************************************************************
+***< Section: Amortissement >***
+************************************************************************
+    F1    = TB1.MODES. 1 . FREQUENCE ;
+    F2    = TB1.MODES. 2 . FREQUENCE ;
+    ALPHA = 4.0 * PI * F1 * F2 / (F1 + F2) ;
+    BETA  = 1.0 / (PI * (F1 + F2)) ;
+    AMO_S = KSI_S  * ((ALPHA * MAS_S) ET (BETA * RIGI1)) ;
+    
+    TAMOR = TABLE 'AMORTISSEMENT';
+    TAMOR . 'AMORTISSEMENT' = PJBA tbas1 AMO_S;
+SINO;
+    I = 1 ;
+    
+* Fréquence propre
+    FRQ1 = TB1.MODES.I. FREQUENCE ;
+    
+    F1    = FRQ1 ;
+    F2    = 50. ;
+    ALPHA = 4.0 * PI * F1 * F2 / (F1 + F2) ;
+    BETA  = 1.0 / (PI * (F1 + F2)) ;
+    AMO_S = KSI_S  * ((ALPHA * MAS_S) ET (BETA * RIGI1)) ;
+    
+    TAMOR = TABLE 'AMORTISSEMENT';
+    TAMOR . 'AMORTISSEMENT' = PJBA tbas1 AMO_S;
+FINS;
+
+************************************************************************
+***< Section: INPUT PARAMETERS >***
+
+***Tab tai trong don vi
+CHA1 = TABLE;
+REPE STALOAD (NBE + 1);
+    i = &STALOAD;
+    PD = NOEU i;
+    CHA1 . i  = FORC FY -1. PD;
+FIN STALOAD;
+
+
+************************************************************************
+***< Section: DYNAMIC ANALYSIS >***
+************************************************************************
+PCALCULK = TABL;
+
+REPE KPCAL (DIME XPCAL);
+    XXCAL = EXTR (&KPCAL) XPCAL;
+    PCALCULK. &KPCAL = POIN L1 'PROC' (XXCAL 0. );
+FIN KPCAL;
+
+***Calcul
+NAMETRA  = TABL;
+RESUDMax = TABL;
+RESUAMax = TABL;
+RESUMMax = TABL;
+
+LISTRAIN = PROG;
+
+REPE BLOC1 (DIME TABTRAIN);
+    i        = &BLOC1;
+    LISTRAIN = LISTRAIN ET (PROG  i);
+
+    NAMETRA. i = TABTRAIN. i . 'Name';
+    T_K1 = TrainCV (TABTRAIN . i);
+    RESUV KDMax KAMax KMMax = 
+    CALCULK T_K1 VK1 VK2 DELTAV DTEX PCALCULK MODLTOT MATOT RSCALE;
+    
+    RESUDMax . i = KDMax;
+    RESUAMax . i = KAMax;
+    RESUMMax . i = KMMax;
+    
+FIN BLOC1;
+
+DESSDMAX PCALCULK NAMETRA RESUDMax RESUV LISTRAIN VK1 VK2 TRACKH;
+
+DESSAMAX PCALCULK NAMETRA RESUAMax RESUV LISTRAIN VK1 VK2 TRACKH;
+
+DESSMMAX PCALCULK NAMETRA RESUMMax RESUV LISTRAIN VK1 VK2 TRACKH;
+FIN;
+
+
+
+
+
+
+
+

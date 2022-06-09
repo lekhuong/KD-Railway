@@ -1,0 +1,92 @@
+************************************************************************
+***< Section: MODEL PROPERTIES >***
+************************************************************************
+OPTI DIME 2; OPTI ELEM SEG2;
+
+
+***Convert train
+************************************************
+
+RHOK  = Mk/ASEC;
+ESIZE = L / Nbe;
+
+PA = 0. 0. ; 
+
+NBE = ENTI NBE;
+REPE LINE Nbe;
+    i=&LINE;
+    SI (EGA i 1);
+        L1 = PA DROI 1 (i*ESIZE 0.);
+    SINON;
+        L1 = L1 DROI 1 (i*ESIZE 0.);
+    FINS;
+FIN LINE;
+
+PB = POIN L1 'PROC' (L 0.);
+
+*+++++++++++++++++++++++++++++++++++*
+* MATRIX OF RIGIDITY *
+*+++++++++++++++++++++++++++++++++++*
+MODLTOT = MODE L1 MECANIQUE ELASTIQUE POUT;
+MATOT = MATE MODLTOT YOUN (EK * 1E6) NU 0.3 RHO RHOK 
+SECT ASEC INRZ IK; 
+RIGI1 = RIGI MODLTOT MATOT;
+MAS_S = MASS MODLTOT MATOT;
+*OPTI DONN 5;
+*+++++++++++++++++++++++++++++++++++*
+* BOUNDARY CONDITIONS *
+*+++++++++++++++++++++++++++++++++++*
+CLT = BLOQ UX UY UZ RX RY (PA ET PB); 
+RIGITOT = RIGI1 ET CLT;
+
+************************************************************************
+***< Section: Modal analysis >***
+************************************************************************
+
+MASIMP = MASS MATOT MODLTOT ;
+TB1    = VIBR 'INTERVAL' 0.1 FMAXK RIGITOT MASIMP 'MULT' TBAS ;
+vib1b  = TB1 . 'MODES';
+
+* Modal basis
+TBAS1 = TABLE 'BASE_MODALE' ;
+TBAS1.'MODES' = vib1b ;
+*
+NB_MODE = DIME TB1. 'MODES';
+list NB_MODE;
+
+
+REPE BLOC1 NB_MODE ;
+    I = &BLOC1 ;
+*
+    SI (EXIS (TB1 . MODES) I);
+*
+* Numéro du mode
+        NUM1 = TB1.MODES.I. NUMERO_MODE ;
+        MESS ' ' ;
+        MESS '+------------------------------------------------+' ;
+        MESS '                      MODE -' NUM1  ;
+        MESS '+------------------------------------------------+' ;
+        MESS ' ' ;
+        
+* Fréquence propre
+        FRQ1 = TB1.MODES.I. FREQUENCE ;
+        MESS 'Fréquence :' FRQ1 'Hz' ;
+        MESS '' ; 
+* Vecteur propre
+        CHP1 = TB1.MODES.I. DEFORMEE_MODALE ;
+        TITRE 'Ind =' I '   DEFORMEE MODALE FREQUENCE' FRQ1 'Hz';
+        DEF0 = DEFO L1 CHP1 0. BLAN ;
+        DEF1 = DEFO L1 CHP1 3.0 ROUG ;
+        TRAC (DEF0 ET DEF1);
+    FINS;
+FIN BLOC1;
+
+FIN;
+
+
+
+
+
+
+
+

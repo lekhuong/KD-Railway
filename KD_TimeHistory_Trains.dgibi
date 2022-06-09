@@ -1,0 +1,345 @@
+OPTI DIME 2; OPTI ELEM SEG2;
+*OPTI EPSI LINEAIRE;
+
+***Convert train
+DEBP TrainCV TRAINK*TABLE;
+    T_K1 = TABLE;
+    T_K1. X = TABL;
+    T_K1. F = TABL;
+    REPE BLOC1 (DIME (TRAINK . 'Location'));
+        i = &BLOC1;
+        T_K1. X . i = EXTR (TRAINK . 'Location') i;
+        T_K1. F . i = (EXTR (TRAINK . 'Load') i) * 1000.;    
+    FIN BLOC1;
+FINP T_K1;
+
+DEBP FTIME TRAIN*TABLE T1*FLOTTANT LENGTH*FLOTTANT 
+    VT*FLOTTANT TEND*FLOTTANT;
+    TPASS = LENGTH/VT;
+    LI1 = PROG -0.5; 
+    LI2 = PROG 0.;  
+    NBLOAD = DIME (TRAIN . X);
+    REPE KHUONG NBLOAD;
+        i = &KHUONG;
+        XLOAD = TRAIN . X . i;
+        FLOAD = TRAIN . F . i;
+        TK = XLOAD / VT + T1;
+        LI1 = LI1 ET (PROG TK (TK + TPASS) (TK + (2*TPASS))); 
+        LI2 = LI2 ET (PROG 0. FLOAD 0.);
+    FIN KHUONG;
+    LI1 = LI1 ET (PROG TEND);
+    LI2 = LI2 ET (PROG 0.);
+    EV = EVOL MANU LI1 LI2 ;
+FINP EV;
+
+DEBP CALCULKT TRAINK*TABLE VTRACER*TABLE PCALCULK*TABLE DTEX*FLOTTANT
+    RSCALE*FLOTTANT;
+
+***Moi train se tinh time history cho cac mat cat voi cac van toc khac nhau
+    
+*Nember of axe loads
+    NBAXEL = DIME (TRAINK . X);
+    
+***Bat dau tinh toan vong lap (vong lap lon theo van toc)
+    NBV = DIME VTRACER;
+    
+*Tabl luu chuyen vi, gia toc theo thoi gian
+    RDTIME = TABL;
+    RATIME = TABL;
+    
+    REPE KHUONG NBV;
+        RDTIME . &KHUONG = TABL;
+        RATIME . &KHUONG = TABL;
+        
+        VKK   = VTRACER. &KHUONG;
+        VKK   = VKK / 3.6;
+        TENDK = ((TRAINK . X . NBAXEL) + L ) / VKK;
+        TENDK = (ENTI TENDK) + 2.;
+        
+        REPE DYNLOAD (NBE + 1);
+            i = &DYNLOAD;
+            TSTART = ESIZE * (i - 2) / VKK;
+            EVK = FTIME TRAINK TSTART ESIZE VKK TENDK;
+            CHAD = CHAR MECA (CHA1 .  i) EVK;
+            SI (EGA i 1);
+                CHADYN = CHAD;
+            SINON;
+                CHADYN = CHADYN ET CHAD;
+            FINSI;
+        FIN DYNLOAD;
+        
+        TCHAR = TABLE 'CHARGEMENT' ;    
+        TCHAR.'BASE_A' = pjba tbas1 CHADYN;
+        
+        TSORT = TABLE 'SORTIE'   ;                           
+        TSORV = TABLE 'VARIABLE' ;                           
+        TSORT.'VARIABLE' = TSORV ;                           
+        TSORV.'VITESSE'         = VRAI;                     
+        TSORV.'DEPLACEMENT' = VRAI ;                     
+        TSORV.'ACCELERATION'    = VRAI ;
+*
+        
+        NTT   = ENTIER (TENDK/DTEX);
+        TRESU = DYNE DE_VOGELAERE TBAS1 TAMOR TCHAR NTT DTEX TSORT;
+        
+        REPE PKCAL (DIME PCALCULK);
+            PCALCUL = PCALCULK. &PKCAL;
+***Displacement en mm
+            EDKK = EVOL RECO TRESU tbas1 CHADYN 'DEPL' PCALCUL  UY;
+            EDKK = EDKK * 1000. * RSCALE;
+            
+***Acceleration en m/s2
+            EAKK = EVOL RECO TRESU tbas1 CHADYN 'ACCE' PCALCUL  UY;
+            EAKK = EAKK * RSCALE;
+            RDTIME . &KHUONG . &PKCAL = EDKK;
+            RATIME . &KHUONG . &PKCAL = EAKK;
+
+        FIN PKCAL;
+        
+    FIN KHUONG;
+FINP RDTIME RATIME;
+
+DEBP DDKTIME PCALCULK*TABLE NAMETRA*TABLE RESDTIME*TABLE VTRACER*TABLE 
+    LISTRAIN*LISTREEL DESSK*MOT;
+    
+    TABLEGE = TABL;
+    TABLEGE. 'TITRE'     = TABL;
+    licoul = MOTS 'DEFAUT' 'BLEU' 'ROUGE' 'ROSE' 'JAUNE' 'VERT' 'TURQ'
+    'AZUR' 'ORANGE' 'VIOLET' 'OCEAN' 'CYAN' 'OLIVE' 'GRIS';
+    lilign = MOTS 'LIGN ' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '
+    'LIGN' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM ' 'LIGN ' 
+    'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '  ;
+    
+    REPE MAI (dime VTRACER);
+        VTRAIN = VTRACER . &MAI;
+        REPE DESSPC (dime PCALCULK);
+            XXK = FLOT (COOR 1 (PCALCULK. &DESSPC));
+            REPE KHUONG (DIME LISTRAIN);
+                ik    = ENTI (EXTR LISTRAIN &KHUONG);
+                icoul = 'EXTR' licoul &KHUONG ;
+                ilign = 'EXTR' lilign &KHUONG ;
+                
+                TABKH = RESDTIME . ik . &MAI . &DESSPC;
+                TABKH = COUL icoul TABKH;
+                SI (EGA &KHUONG 1);
+                    KHEVOL = TABKH;
+                SINO;
+                    KHEVOL = KHEVOL ET TABKH;
+                FINS;
+                TABLEGE. 'TITRE' . &KHUONG = NAMETRA. ik;
+                TABLEGE. &KHUONG = MOT ilign;
+            FIN KHUONG;
+            
+            namepic = CHAI 'Time history displacement at velocity =' 
+            FORMAT '(F6.2)' VTRAIN 'km/h '
+            'at position x= '
+            FORMAT '(F6.2)' XXK 'm';
+            
+            OPTI 'TRAC' DESSK 'EPTR' 10;
+*OPTI 'POTR' 'HELVETICA_14'  ;
+            DESS KHEVOL 
+            'LEGE' TABLEGE 'MIMA'
+*'XGRA' 20
+            'TITR' namepic
+            'TITX' 't(s)'  'POSX' 'EXCE'
+            'TITY' 'Displacement (mm)' 'POSY' 'EXCE'
+            'GRIL' 'POIN' 'GRIS';
+            
+        FIN DESSPC;
+    FIN MAI;
+FINP;
+
+DEBP DAKTIME PCALCULK*TABLE NAMETRA*TABLE RESATIME*TABLE VTRACER*TABLE 
+    LISTRAIN*LISTREEL DESSK*MOT;
+    
+    TABLEGE = TABL;
+    TABLEGE. 'TITRE'     = TABL;
+    licoul = MOTS 'DEFAUT' 'BLEU' 'ROUGE' 'ROSE' 'JAUNE' 'VERT' 'TURQ'
+    'AZUR' 'ORANGE' 'VIOLET' 'OCEAN' 'CYAN' 'OLIVE' 'GRIS';
+    lilign = MOTS 'LIGN ' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '
+    'LIGN' 'TIRR ' 'TIRC ' 'TIRL ' 'TIRM ' 'LIGN ' 
+    'TIRR ' 'TIRC ' 'TIRL ' 'TIRM '  ;
+    
+    REPE MAI (dime VTRACER);
+        VTRAIN = VTRACER. &MAI;
+        REPE DESSPC (dime PCALCULK);
+            XXK = FLOT (COOR 1 (PCALCULK. &DESSPC));
+            REPE KHUONG (DIME LISTRAIN);
+                ik    = ENTI (EXTR LISTRAIN &KHUONG);
+                icoul = 'EXTR' licoul &KHUONG ;
+                ilign = 'EXTR' lilign &KHUONG ;
+                
+                TABKH = RESATIME. ik . &MAI . &DESSPC;
+                TABKH = COUL icoul TABKH;
+                SI (EGA &KHUONG 1);
+                    KHEVOL = TABKH;
+                SINO;
+                    KHEVOL = KHEVOL ET TABKH;
+                FINS;
+                TABLEGE. 'TITRE' . &KHUONG = NAMETRA. ik;
+                TABLEGE. &KHUONG = MOT ilign;
+            FIN KHUONG;
+            
+            namepic = CHAI 'Time history acceleration at train velocity =' 
+            FORMAT '(F6.2)' VTRAIN 'km/h '
+            'at position x= '
+            FORMAT '(F6.2)' XXK 'm';
+            
+            OPTI 'TRAC' DESSK 'EPTR' 10;
+*OPTI 'POTR' 'HELVETICA_14'  ;
+            DESS KHEVOL 
+            'LEGE' TABLEGE 'MIMA'
+*'XGRA' 20
+            'TITR' namepic
+            'TITX' 't(s)'  'POSX' 'EXCE'
+            'TITY' 'Acceleration (m/s2)' 'POSY' 'EXCE'
+            'GRIL' 'POIN' 'GRIS';
+            
+        FIN DESSPC;
+    FIN MAI;
+FINP;
+
+
+************************************************************************
+***< Section: Main section >***
+************************************************************************
+
+RHOK  = Mk/ASEC;
+ESIZE = L / Nbe;
+
+PA = 0. 0. ; 
+
+REPE LINE Nbe;
+    i=&LINE;
+    SI (EGA i 1);
+        L1 = PA DROI 1 (i*ESIZE 0.);
+    SINON;
+        L1 = L1 DROI 1 (i*ESIZE 0.);
+    FINS;
+FIN LINE;
+
+PB = POIN L1 'PROC' (L 0.);
+
+*+++++++++++++++++++++++++++++++++++*
+* MATRIX OF RIGIDITY *
+*+++++++++++++++++++++++++++++++++++*
+MODLTOT = MODE L1 MECANIQUE ELASTIQUE POUT;
+MATOT = MATE MODLTOT YOUN (EK * 1E6) NU 0.3 RHO RHOK 
+SECT ASEC INRZ IK; 
+RIGI1 = RIGI MODLTOT MATOT;
+MAS_S = MASS MODLTOT MATOT;
+*OPTI DONN 5;
+*+++++++++++++++++++++++++++++++++++*
+* BOUNDARY CONDITIONS *
+*+++++++++++++++++++++++++++++++++++*
+CLT = BLOQ UX UY UZ RX RY (PA ET PB); 
+RIGITOT = RIGI1 ET CLT;
+
+************************************************************************
+***< Section: Modal analysis >***
+************************************************************************
+
+
+MASIMP = MASS MATOT MODLTOT ;
+TB1    = VIBR 'INTERVAL' 0.1 FMAXK RIGITOT MASIMP 'MULT' TBAS ;
+vib1b  = TB1 . 'MODES';
+
+* Modal basis
+TBAS1 = TABLE 'BASE_MODALE' ;
+TBAS1.'MODES' = vib1b ;
+*
+NB_MODE = DIME TB1. 'MODES';
+
+SI (NB_MODE > 1); 
+    
+***********************************************************************
+***< Section: Amortissement >***
+************************************************************************
+    F1    = TB1.MODES. 1 . FREQUENCE ;
+    F2    = TB1.MODES. 2 . FREQUENCE ;
+    ALPHA = 4.0 * PI * F1 * F2 / (F1 + F2) ;
+    BETA  = 1.0 / (PI * (F1 + F2)) ;
+    AMO_S = KSI_S  * ((ALPHA * MAS_S) ET (BETA * RIGI1)) ;
+    
+    TAMOR = TABLE 'AMORTISSEMENT';
+    TAMOR . 'AMORTISSEMENT' = PJBA tbas1 AMO_S;
+SINO;
+    I = 1 ;
+    
+    F1    = FRQ1 ;
+    F2    = 50. ;
+    ALPHA = 4.0 * PI * F1 * F2 / (F1 + F2) ;
+    BETA  = 1.0 / (PI * (F1 + F2)) ;
+    AMO_S = KSI_S  * ((ALPHA * MAS_S) ET (BETA * RIGI1)) ;
+    
+    TAMOR = TABLE 'AMORTISSEMENT';
+    TAMOR . 'AMORTISSEMENT' = PJBA tbas1 AMO_S;
+FINS;
+
+************************
+************************************************
+***< Section: INPUT PARAMETERS >***
+************************************************************************
+*Khao sat theo van toc (km/h) ----- Chu y phai doi ra m/s
+
+PCALCULK = TABL;
+
+REPE KPCAL (DIME XPCAL);
+    XXCAL = EXTR (&KPCAL) XPCAL;
+    PCALCULK. &KPCAL = POIN L1 'PROC' (XXCAL 0. );
+FIN KPCAL;
+
+
+VTRACER = TABL;
+
+REPE KVCAL (DIME VELOCAL);
+    VVCAL = EXTR (&KVCAL) VELOCAL;
+    VTRACER. &KVCAL = VVCAL;
+FIN KVCAL;
+
+***Tab tai trong don vi
+CHA1 = TABLE;
+REPE STALOAD (NBE + 1);
+    i = &STALOAD;
+    PD = NOEU i;
+    CHA1 . i  = FORC FY -1. PD;
+FIN STALOAD;
+
+
+************************************************************************
+***< Section: DYNAMIC ANALYSIS >***
+************************************************************************
+
+*
+NAMETRA  = TABL;
+RESDTIME = TABL;
+RESATIME = TABL;
+LISTRAIN = PROG;
+
+REPE BLOC1 (DIME TABTRAIN);
+    i        = &BLOC1;
+    LISTRAIN = LISTRAIN ET (PROG  i);
+    
+    NAMETRA. i = TABTRAIN. i . 'Name';
+    T_K1 = TrainCV (TABTRAIN . i);
+    
+    KDTIME KATIME = CALCULKT T_K1 VTRACER PCALCULK DTEX RSCALE;
+    
+    RESDTIME . i = KDTIME;
+    RESATIME . i = KATIME;
+FIN BLOC1;
+
+
+DDKTIME PCALCULK NAMETRA RESDTIME VTRACER LISTRAIN TRACKH;
+
+DAKTIME PCALCULK NAMETRA RESATIME VTRACER LISTRAIN TRACKH;
+*
+FIN;
+
+
+
+
+
+
+
+
